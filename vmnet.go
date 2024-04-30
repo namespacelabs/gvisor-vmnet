@@ -231,6 +231,10 @@ func (nt *Network) tcpIncomingForward(guestIPv4 net.IP, guestPort, hostPort int)
 				)
 				return
 			}
+			nt.logger.Info(
+				"forwarding host TCP connection",
+				slog.Any("remote", conn.RemoteAddr()),
+			)
 
 			go func() {
 				defer conn.Close()
