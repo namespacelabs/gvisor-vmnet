@@ -12,6 +12,7 @@ import (
 	"gvisor.dev/gvisor/pkg/tcpip/adapters/gonet"
 	"gvisor.dev/gvisor/pkg/tcpip/header"
 	"gvisor.dev/gvisor/pkg/tcpip/network/ipv4"
+	"gvisor.dev/gvisor/pkg/tcpip/network/ipv6"
 	"gvisor.dev/gvisor/pkg/tcpip/stack"
 	"gvisor.dev/gvisor/pkg/tcpip/transport/tcp"
 )
@@ -202,6 +203,50 @@ func (nt *Network) Shutdown() {
 
 // Gateway returns default gateway in this network stack.
 func (nt *Network) Gateway() *Gateway { return nt.gateway }
+
+func (nt *Network) DialContextTCP(ctx context.Context, network string, laddr, raddr *net.TCPAddr) (net.Conn, error) {
+	proto, err := protocolNumberFromNetwork(network)
+	if err != nil {
+		return nil, err
+	}
+	var laddrGonet tcpip.FullAddress
+	if laddr != nil {
+		laddrGonet = tcpip.FullAddress{Addr: tcpip.AddrFromSlice(laddr.IP), Port: uint16(laddr.Port)}
+	}
+	var raddrGonet tcpip.FullAddress
+	if raddr != nil {
+		raddrGonet = tcpip.FullAddress{Addr: tcpip.AddrFromSlice(raddr.IP), Port: uint16(raddr.Port)}
+	}
+	return gonet.DialTCPWithBind(ctx, nt.stack, laddrGonet, raddrGonet, proto)
+}
+
+func (nt *Network) DialUDP(ctx context.Context, network string, laddr, raddr *net.UDPAddr) (net.Conn, error) {
+	proto, err := protocolNumberFromNetwork(network)
+	if err != nil {
+		return nil, err
+	}
+	var laddrGonet *tcpip.FullAddress
+	if laddr != nil {
+		laddrGonet = &tcpip.FullAddress{Addr: tcpip.AddrFromSlice(laddr.IP), Port: uint16(laddr.Port)}
+	}
+	var raddrGonet *tcpip.FullAddress
+	if raddr != nil {
+		raddrGonet = &tcpip.FullAddress{Addr: tcpip.AddrFromSlice(raddr.IP), Port: uint16(raddr.Port)}
+	}
+	return gonet.DialUDP(nt.stack, laddrGonet, raddrGonet, proto)
+}
+
+func (nt *Network) ListenTCP(network string, laddr *net.TCPAddr) (net.Listener, error) {
+	proto, err := protocolNumberFromNetwork(network)
+	if err != nil {
+		return nil, err
+	}
+	var laddrGonet tcpip.FullAddress
+	if laddr != nil {
+		laddrGonet = tcpip.FullAddress{Addr: tcpip.AddrFromSlice(laddr.IP), Port: uint16(laddr.Port)}
+	}
+	return gonet.ListenTCP(nt.stack, laddrGonet, proto)
+}
 
 func (nt *Network) tcpIncomingForward(guestIPv4 net.IP, guestPort, hostPort int) (func() error, error) {
 	ln, err := net.Listen("tcp", ":"+strconv.Itoa(hostPort))
@@ -425,4 +470,15 @@ func (mt *wrappedConn) Close() error {
 	}
 
 	return err
+}
+
+func protocolNumberFromNetwork(network string) (tcpip.NetworkProtocolNumber, error) {
+	switch network {
+	case "tcp", "udp":
+		return ipv4.ProtocolNumber, nil
+	case "tcp6", "udp6":
+		return ipv6.ProtocolNumber, nil
+	default:
+		return 0, fmt.Errorf("unknown network %s", network)
+	}
 }
