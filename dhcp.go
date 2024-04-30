@@ -190,6 +190,9 @@ func hosts(cidr string) ([]netip.Addr, error) {
 	if err != nil {
 		return nil, err
 	}
+	// If the caller passed a cidr with non-zero local digits, zero them.
+	// This is consistent with net.ParseCIDR (called by vmnet.New).
+	prefix = prefix.Masked()
 
 	var ips []netip.Addr
 	for addr := prefix.Addr(); prefix.Contains(addr); addr = addr.Next() {
