@@ -140,7 +140,7 @@ func New(cidr string, opts ...NetworkOpts) (*Network, error) {
 		return nil, err
 	}
 
-	pool := newBytePool(int(opt.MTU))
+	pool := newBytePool(int(opt.MTU + header.EthernetMaximumSize))
 
 	_, subnet, err := net.ParseCIDR(cidr)
 	if err != nil {
