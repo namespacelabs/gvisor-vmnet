@@ -43,7 +43,7 @@ type endpoint struct {
 	// its end of the communication pipe.
 	closed func(tcpip.Address, error)
 
-	writer  *pcapgo.Writer
+	writer  pcapWriter
 	snapLen int
 
 	pool *bytePool
@@ -77,7 +77,7 @@ func newGatewayEndpoint(opts gatewayEndpointOption) (*endpoint, error) {
 		dhcpv4Handler: opts.DHCPv4Handler,
 	}
 	if opts.Writer != nil {
-		ep.writer = pcapgo.NewWriter(opts.Writer)
+		ep.writer = &syncPCAPWriter{w: pcapgo.NewWriter(opts.Writer)}
 		ep.snapLen = 65536
 		if err := ep.writer.WriteFileHeader(uint32(ep.snapLen), layers.LinkTypeEthernet); err != nil {
 			return nil, err
@@ -189,11 +189,12 @@ func (e *endpoint) writePacket(pkt stack.PacketBufferPtr) tcpip.Error {
 
 	if e.writer != nil {
 		packetSize := pkt.Size()
+		capLen := e.captureLength(packetSize)
 		e.writer.WritePacket(gopacket.CaptureInfo{
 			Timestamp:     time.Now(),
-			CaptureLength: e.captureLength(packetSize),
+			CaptureLength: capLen,
 			Length:        packetSize,
-		}, data)
+		}, data[0:capLen])
 	}
 
 	conn, ok := e.conns.Load(pkt.EgressRoute.RemoteAddress)
