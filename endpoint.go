@@ -252,6 +252,10 @@ func (e *endpoint) inboundDispatch(devAddr tcpip.Address, conn net.Conn) (bool, 
 		return false, err
 	}
 
+	if n > int(e.mtu) {
+		e.logger.Info("received large packet", "len", n)
+	}
+
 	if e.writer != nil {
 		e.writer.WritePacket(gopacket.CaptureInfo{
 			Timestamp:     time.Now(),
