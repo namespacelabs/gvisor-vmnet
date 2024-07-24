@@ -140,7 +140,7 @@ func (e *endpoint) ARPHardwareType() header.ARPHardwareType {
 }
 
 // AddHeader implements stack.LinkEndpoint.AddHeader.
-func (e *endpoint) AddHeader(pkt stack.PacketBufferPtr) {
+func (e *endpoint) AddHeader(pkt *stack.PacketBuffer) {
 	// Add ethernet header if needed.
 	eth := header.Ethernet(pkt.LinkHeader().Push(header.EthernetMinimumSize))
 	eth.Encode(&header.EthernetFields{
@@ -167,6 +167,11 @@ func (e *endpoint) Attach(dispatcher stack.NetworkDispatcher) {
 	}
 }
 
+func (e *endpoint) Close()                                {}
+func (e *endpoint) SetLinkAddress(addr tcpip.LinkAddress) {}
+func (e *endpoint) SetMTU(mtu uint32)                     {}
+func (e *endpoint) SetOnCloseAction(func())               {}
+
 // dispatchLoop reads packets from the file descriptor in a loop and dispatches
 // them to the network stack.
 func (e *endpoint) dispatchLoop(ipAddr tcpip.Address, conn net.Conn) {
@@ -184,7 +189,7 @@ func (e *endpoint) dispatchLoop(ipAddr tcpip.Address, conn net.Conn) {
 
 // writePacket writes outbound packets to the connection. If it is not
 // currently writable, the packet is dropped.
-func (e *endpoint) writePacket(pkt stack.PacketBufferPtr) tcpip.Error {
+func (e *endpoint) writePacket(pkt *stack.PacketBuffer) tcpip.Error {
 	data := pkt.ToView().AsSlice()
 
 	if e.writer != nil {
@@ -265,7 +270,7 @@ func (e *endpoint) inboundDispatch(devAddr tcpip.Address, conn net.Conn) (bool, 
 }
 
 func (e *endpoint) deliverOrConsumeNetworkPacket(
-	pkt stack.PacketBufferPtr,
+	pkt *stack.PacketBuffer,
 	conn net.Conn,
 ) (bool, error) {
 	hdr, ok := pkt.LinkHeader().Consume(int(e.MaxHeaderLength()))
@@ -287,7 +292,7 @@ func (e *endpoint) deliverOrConsumeNetworkPacket(
 
 func (e *endpoint) deliverOrConsumeARPPacket(
 	ethHdr header.Ethernet,
-	pkt stack.PacketBufferPtr,
+	pkt *stack.PacketBuffer,
 	conn net.Conn,
 ) (bool, error) {
 	data := pkt.ToView().AsSlice()
@@ -323,7 +328,7 @@ func (e *endpoint) deliverOrConsumeARPPacket(
 
 func (e *endpoint) deliverOrConsumeIPv4Packet(
 	ethHdr header.Ethernet,
-	pkt stack.PacketBufferPtr,
+	pkt *stack.PacketBuffer,
 	conn net.Conn,
 ) (bool, error) {
 	data := pkt.ToView().AsSlice()
@@ -398,4 +403,4 @@ func (e *endpoint) deliverOrConsumeIPv4Packet(
 	return true, nil
 }
 
-func (e *endpoint) ParseHeader(stack.PacketBufferPtr) bool { return true }
+func (e *endpoint) ParseHeader(*stack.PacketBuffer) bool { return true }
