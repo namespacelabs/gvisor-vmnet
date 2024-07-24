@@ -95,10 +95,12 @@ func (h *dnsHandler) handleDNS(conn net.PacketConn, msg *dns.Msg, peer *net.UDPA
 	reply.RecursionAvailable = true
 
 	for _, q := range msg.Question {
-		rr, err := h.resolver.Lookup(q, msg.MsgHdr, msg.Compress)
+		rc, rr, err := h.resolver.Lookup(q, msg.MsgHdr, msg.Compress)
 		if err != nil && !errors.Is(err, os.ErrDeadlineExceeded) {
-			return err
+			reply.Rcode = dns.RcodeServerFailure
+			continue
 		}
+		reply.Rcode = rc
 		if len(rr) > 0 {
 			reply.Answer = append(reply.Answer, rr...)
 		}
@@ -121,12 +123,12 @@ type dnsResolver struct {
 	cache         *cache.Cache[dns.Question, []dns.RR]
 }
 
-func (r *dnsResolver) Lookup(q dns.Question, hdr dns.MsgHdr, compress bool) ([]dns.RR, error) {
+func (r *dnsResolver) Lookup(q dns.Question, hdr dns.MsgHdr, compress bool) (int, []dns.RR, error) {
 	if q.Qtype == dns.TypeA {
 		// First, Try from static record.
 		addr, ok := r.staticRecords[q.Name]
 		if ok {
-			return []dns.RR{
+			return dns.RcodeSuccess, []dns.RR{
 				&dns.A{
 					Hdr: dns.RR_Header{
 						Name:   q.Name,
@@ -142,7 +144,7 @@ func (r *dnsResolver) Lookup(q dns.Question, hdr dns.MsgHdr, compress bool) ([]d
 		// Second, Try from cache.
 		resp, ok := r.cache.Get(q)
 		if ok {
-			return resp, nil
+			return dns.RcodeSuccess, resp, nil
 		}
 	}
 
@@ -179,16 +181,14 @@ RESOLVE:
 			if err != nil {
 				return err
 			}
-			if resp.Rcode == dns.RcodeSuccess {
-				ch <- resp
-				cancel()
-			}
+			ch <- resp
+			cancel()
 			return nil
 		})
 	}
 
 	if err := eg.Wait(); err != nil {
-		return nil, err
+		return dns.RcodeServerFailure, nil, err
 	}
 
 	resp := <-ch
@@ -199,7 +199,7 @@ RESOLVE:
 			r.cache.Set(q, resp.Answer, cache.WithExpiration(exp))
 		}
 	}
-	return resp.Answer, nil
+	return resp.Rcode, resp.Answer, nil
 }
 
 func findDNSARecordMinTTL(answers []dns.RR) (minTTL uint32) {
