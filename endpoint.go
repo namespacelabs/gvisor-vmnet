@@ -158,9 +158,12 @@ func (e *endpoint) AddHeader(pkt *stack.PacketBuffer) {
 func (e *endpoint) Attach(dispatcher stack.NetworkDispatcher) {
 	// nil means the NIC is being removed.
 	if dispatcher == nil && e.dispatcher != nil {
+		e.conns.Range(func(a tcpip.Address, c net.Conn) bool {
+			c.Close()
+			return true
+		})
 		e.Wait()
 		e.dispatcher = nil
-		return
 	}
 	if dispatcher != nil && e.dispatcher == nil {
 		e.dispatcher = dispatcher
