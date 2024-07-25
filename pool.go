@@ -75,9 +75,8 @@ func (b *bytePool) tcpRelay(rw1, rw2 io.ReadWriteCloser) error {
 func (b *bytePool) udpRelay(
 	ctx context.Context,
 	logger *slog.Logger,
-	dst net.PacketConn,
-	dstAddr net.Addr,
-	src net.PacketConn,
+	dst net.Conn,
+	src net.Conn,
 	cancel, extend func(),
 ) {
 	defer cancel()
@@ -92,27 +91,23 @@ func (b *bytePool) udpRelay(
 		default:
 		}
 
-		n, srcAddr, err := src.ReadFrom(buf)
+		n, err := src.Read(buf)
 		if err == io.EOF {
 			return
 		}
 		if err != nil && !errors.Is(err, net.ErrClosed) {
-			if srcAddr != nil {
-				logger.Info(
-					"failed to read packet",
-					err,
-					slog.String("from", srcAddr.String()),
-				)
-			}
+			logger.Info(
+				"failed to read packet",
+				"err", err,
+			)
 			return
 		}
 
-		_, err = dst.WriteTo(buf[:n], dstAddr)
+		_, err = dst.Write(buf[:n])
 		if err != nil && !errors.Is(err, net.ErrClosed) {
 			logger.Info(
 				"failed to write packet",
-				err,
-				slog.String("to", dstAddr.String()),
+				"err", err,
 			)
 			return
 		}

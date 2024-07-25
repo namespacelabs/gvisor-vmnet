@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"net"
-	"time"
 
 	"gvisor.dev/gvisor/pkg/tcpip"
 	"gvisor.dev/gvisor/pkg/tcpip/adapters/gonet"
@@ -48,9 +46,10 @@ func (nt *Network) setTCPForwarder(ctx context.Context) {
 			conn, err := nt.dialTCP(ctx, id.LocalAddress, id.LocalPort)
 			if err != nil {
 				nt.logger.Error(
-					"failed to dial TCP", err,
-					slog.String("target", remoteAddr),
-					slog.String("between", relay),
+					"failed to dial TCP",
+					"err", err,
+					"target", remoteAddr,
+					"between", relay,
 				)
 				return
 			}
@@ -60,14 +59,11 @@ func (nt *Network) setTCPForwarder(ctx context.Context) {
 				conn.Close()
 			}()
 
-			nt.logger.Info(
-				"start TCP relay",
-				slog.String("between", relay),
-			)
+			nt.logger.Info("start TCP relay", "between", relay)
 
 			err = nt.pool.tcpRelay(conn, gonet.NewTCPConn(&wq, ep))
 			if err != nil {
-				nt.logger.Error("failed TCP relay", err, slog.String("between", relay))
+				nt.logger.Error("failed TCP relay", "err", err, "between", relay)
 			}
 		},
 	)
@@ -84,10 +80,5 @@ func (nt *Network) dialTCP(ctx context.Context, addr tcpip.Address, port uint16)
 	}
 	remoteAddr := fmt.Sprintf("%s:%d", addr, port)
 
-	dialer := &net.Dialer{Timeout: 5 * time.Second}
-	conn, err := dialer.DialContext(ctx, "tcp", remoteAddr)
-	if err != nil {
-		return nil, err
-	}
-	return conn.(*net.TCPConn), nil
+	return nt.dialOut(ctx, "tcp", remoteAddr)
 }

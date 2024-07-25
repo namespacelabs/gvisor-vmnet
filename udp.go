@@ -40,25 +40,13 @@ func (nt *Network) setUDPForwarder(ctx context.Context) {
 			return
 		}
 
-		clientAddr := &net.UDPAddr{
-			IP:   net.IP([]byte(id.RemoteAddress.AsSlice())),
-			Port: int(id.RemotePort),
-		}
-		remoteAddr := &net.UDPAddr{
-			IP:   net.IP([]byte(id.LocalAddress.AsSlice())),
-			Port: int(id.LocalPort),
-		}
-
-		proxyConn, err := nt.listenUDP(id.LocalAddress, id.LocalPort)
+		proxyConn, err := nt.dialUDP(ctx, id.LocalAddress, id.LocalPort)
 		if err != nil {
-			if err != nil {
-				nt.logger.Warn(
-					"failed to bind local port",
-					err,
-					slog.String("between", relay),
-				)
-				return
-			}
+			nt.logger.Warn(
+				"failed to bind local port",
+				"err", err,
+				"between", relay)
+			return
 		}
 
 		client := gonet.NewUDPConn(&wq, ep)
@@ -79,36 +67,30 @@ func (nt *Network) setUDPForwarder(ctx context.Context) {
 
 		go func() {
 			defer cancel()
-			nt.pool.udpRelay(ctx, nt.logger, client, clientAddr, proxyConn, cancel, extend) // loc <- remote
+			nt.pool.udpRelay(ctx, nt.logger, client, proxyConn, cancel, extend) // loc <- remote
 		}()
 		go func() {
 			defer cancel()
-			nt.pool.udpRelay(ctx, nt.logger, proxyConn, remoteAddr, client, cancel, extend) // remote <- loc
+			nt.pool.udpRelay(ctx, nt.logger, proxyConn, client, cancel, extend) // remote <- loc
 		}()
 	})
 	nt.stack.SetTransportProtocolHandler(udp.ProtocolNumber, udpForwarder.HandlePacket)
 }
 
-func (nt *Network) listenUDP(addr tcpip.Address, port uint16) (net.PacketConn, error) {
-	proxyAddr := &net.UDPAddr{
-		IP:   net.IPv4zero,
-		Port: int(port),
-	}
+func (nt *Network) dialUDP(ctx context.Context, addr tcpip.Address, port uint16) (net.Conn, error) {
 	if nt.subnet.Contains(addr) {
-		return gonet.DialUDP(nt.stack, &tcpip.FullAddress{
-			Addr: tcpip.AddrFromSlice(net.IPv4zero),
-			Port: 0, // random port
-		}, nil, ipv4.ProtocolNumber)
+		return gonet.DialUDP(nt.stack, nil, &tcpip.FullAddress{
+			Addr: addr,
+			Port: port,
+		}, ipv4.ProtocolNumber)
 	}
-	proxyConn, err := net.ListenUDP("udp", proxyAddr)
+
+	remoteAddr := fmt.Sprintf("%s:%d", addr, port)
+	conn, err := nt.dialOut(ctx, "udp", remoteAddr)
 	if err != nil {
-		proxyAddr.Port = 0
-		proxyConn, err = net.ListenUDP("udp", proxyAddr)
-		if err != nil {
-			return nil, err
-		}
+		return nil, err
 	}
-	return proxyConn, err
+	return conn, err
 }
 
 func dialUDPConn(

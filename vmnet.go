@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"strconv"
+	"time"
 
 	"gvisor.dev/gvisor/pkg/tcpip"
 	"gvisor.dev/gvisor/pkg/tcpip/adapters/gonet"
@@ -25,6 +26,7 @@ type networkOpts struct {
 	TCPMaxInFlight       int
 	TCPReceiveBufferSize int
 	Logger               *slog.Logger
+	DialOut              func(ctx context.Context, network string, addr string) (net.Conn, error)
 }
 
 // NetworkOpts is functional options.
@@ -98,6 +100,14 @@ func WithLogger(logger *slog.Logger) NetworkOpts {
 	}
 }
 
+func WithDialerOut(
+	dialOut func(ctx context.Context, network string, addr string) (net.Conn, error),
+) NetworkOpts {
+	return func(n *networkOpts) {
+		n.DialOut = dialOut
+	}
+}
+
 // Network is network for any virtual machines.
 type Network struct {
 	stack                *stack.Stack
@@ -108,6 +118,8 @@ type Network struct {
 	logger               *slog.Logger
 	subnet               tcpip.Subnet
 	shutdown             func()
+
+	dialOut func(ctx context.Context, network string, addr string) (net.Conn, error)
 }
 
 // New initializes new network stack with a network gateway.
@@ -130,6 +142,7 @@ func New(cidr string, opts ...NetworkOpts) (*Network, error) {
 		TCPMaxInFlight:       512,
 		TCPReceiveBufferSize: tcp.DefaultReceiveBufferSize,
 		Logger:               slog.New(&nopHandler{}), // no output
+		DialOut:              defaultDialOut,
 	}
 	for _, optFunc := range opts {
 		optFunc(opt)
@@ -179,6 +192,7 @@ func New(cidr string, opts ...NetworkOpts) (*Network, error) {
 		gateway:              gw,
 		subnet:               gw.endpoint.subnet,
 		shutdown:             cancel,
+		dialOut:              opt.DialOut,
 	}
 
 	err = gw.serveDNS4Server(ctx, s, &tcpip.FullAddress{
@@ -271,7 +285,8 @@ func (nt *Network) tcpIncomingForward(guestIPv4 net.IP, guestPort, hostPort int)
 			conn, err := ln.Accept()
 			if err != nil {
 				nt.logger.Error(
-					"failed to accept connection in incoming TCP forward", err,
+					"failed to accept connection in incoming TCP forward",
+					"err", err,
 					slog.String("forward", proxy),
 				)
 				return
@@ -291,7 +306,8 @@ func (nt *Network) tcpIncomingForward(guestIPv4 net.IP, guestPort, hostPort int)
 				}, ipv4.ProtocolNumber)
 				if err != nil {
 					nt.logger.Error(
-						"failed to dial connection to upstream in incoming TCP forward", err,
+						"failed to dial connection to upstream in incoming TCP forward",
+						"err", err,
 						slog.String("forward", proxy),
 					)
 					return
@@ -300,7 +316,8 @@ func (nt *Network) tcpIncomingForward(guestIPv4 net.IP, guestPort, hostPort int)
 
 				if err := nt.pool.tcpRelay(conn.(*net.TCPConn), conn1); err != nil {
 					nt.logger.Error(
-						"failed to relay the connection in incoming TCP forward", err,
+						"failed to relay the connection in incoming TCP forward",
+						"err", err,
 						slog.String("forward", proxy),
 					)
 				}
@@ -481,4 +498,9 @@ func protocolNumberFromNetwork(network string) (tcpip.NetworkProtocolNumber, err
 	default:
 		return 0, fmt.Errorf("unknown network %s", network)
 	}
+}
+
+func defaultDialOut(ctx context.Context, network string, addr string) (net.Conn, error) {
+	dialer := &net.Dialer{Timeout: 5 * time.Second}
+	return dialer.DialContext(ctx, network, addr)
 }
