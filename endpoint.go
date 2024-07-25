@@ -208,7 +208,7 @@ func (e *endpoint) writePacket(pkt *stack.PacketBuffer) tcpip.Error {
 	conn, ok := e.conns.Load(pkt.EgressRoute.RemoteAddress)
 	if ok {
 		if _, err := conn.Write(data); err != nil {
-			e.logger.Warn("failed to write packet data in endpoint", err)
+			e.logger.Warn("failed to write packet data in endpoint", "err", err)
 			return &tcpip.ErrInvalidEndpointState{}
 		}
 		return nil
@@ -382,7 +382,7 @@ func (e *endpoint) deliverOrConsumeIPv4Packet(
 			if dstPort == 67 && srcPort == 68 {
 				msg, err := dhcpv4.FromBytes(udpv4.Payload())
 				if err != nil {
-					e.logger.Warn("failed to decode DHCPv4 packet data in endpoint", err)
+					e.logger.Warn("failed to decode DHCPv4 packet data in endpoint", "err", err)
 					return true, nil
 				}
 				go e.dhcpv4Handler.handleDHCPv4(conn, dhcpv4Packet{

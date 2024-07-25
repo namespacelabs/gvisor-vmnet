@@ -76,7 +76,8 @@ func newGateway(hwAddr net.HardwareAddr, opt *gatewayOption) (*Gateway, error) {
 		Subnet:  tcpipSubnet,
 		ClosedFunc: func(ipAddr tcpip.Address, err error) {
 			opt.Logger.Error(
-				"closed ehternet endpoint", err,
+				"closed ethernet endpoint",
+				"err", err,
 				slog.String("IP Address", ipAddr.String()),
 			)
 		},
