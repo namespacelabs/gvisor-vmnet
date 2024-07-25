@@ -29,6 +29,15 @@ func (nt *Network) setUDPForwarder(ctx context.Context) {
 			slog.String("between", relay),
 		)
 
+		proxyConn, err := nt.dialUDP(ctx, id.LocalAddress, id.LocalPort)
+		if err != nil {
+			nt.logger.Warn(
+				"failed to bind local port",
+				"err", err,
+				"between", relay)
+			return
+		}
+
 		var wq waiter.Queue
 		ep, tcpipErr := fr.CreateEndpoint(&wq)
 		if tcpipErr != nil {
@@ -37,15 +46,6 @@ func (nt *Network) setUDPForwarder(ctx context.Context) {
 				slog.Any("tcpiperr", tcpipErr.String()),
 				slog.String("between", relay),
 			)
-			return
-		}
-
-		proxyConn, err := nt.dialUDP(ctx, id.LocalAddress, id.LocalPort)
-		if err != nil {
-			nt.logger.Warn(
-				"failed to bind local port",
-				"err", err,
-				"between", relay)
 			return
 		}
 

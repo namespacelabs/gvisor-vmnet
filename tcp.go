@@ -27,6 +27,24 @@ func (nt *Network) setTCPForwarder(ctx context.Context) {
 				id.RemoteAddress.String(), id.RemotePort,
 			)
 
+			remoteAddr := fmt.Sprintf("%s:%d", id.LocalAddress, id.LocalPort)
+			conn, err := nt.dialTCP(ctx, id.LocalAddress, id.LocalPort)
+			if err != nil {
+				nt.logger.Error(
+					"failed to dial TCP",
+					"err", err,
+					"target", remoteAddr,
+					"between", relay,
+				)
+				fr.Complete(true)
+				return
+			}
+
+			go func() {
+				<-ctx.Done()
+				conn.Close()
+			}()
+
 			var wq waiter.Queue
 			ep, tcpipErr := fr.CreateEndpoint(&wq)
 			if tcpipErr != nil {
@@ -38,29 +56,11 @@ func (nt *Network) setTCPForwarder(ctx context.Context) {
 				fr.Complete(true)
 				return
 			}
-			fr.Complete(false)
 
+			fr.Complete(false)
 			ep.SocketOptions().SetKeepAlive(true)
 
-			remoteAddr := fmt.Sprintf("%s:%d", id.LocalAddress, id.LocalPort)
-			conn, err := nt.dialTCP(ctx, id.LocalAddress, id.LocalPort)
-			if err != nil {
-				nt.logger.Error(
-					"failed to dial TCP",
-					"err", err,
-					"target", remoteAddr,
-					"between", relay,
-				)
-				return
-			}
-
-			go func() {
-				<-ctx.Done()
-				conn.Close()
-			}()
-
 			nt.logger.Info("start TCP relay", "between", relay)
-
 			err = nt.pool.tcpRelay(conn, gonet.NewTCPConn(&wq, ep))
 			if err != nil {
 				nt.logger.Error("failed TCP relay", "err", err, "between", relay)
