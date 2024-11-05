@@ -19,6 +19,8 @@ type gatewayOption struct {
 	Leases    *leaseDB
 	DNSConfig *DNSConfig
 	Subnet    *net.IPNet
+
+	NoDefaultGateway bool
 }
 
 func (o *gatewayOption) dnsConfigTidy(gatewayIP net.IP) error {
@@ -70,6 +72,7 @@ func newGateway(hwAddr net.HardwareAddr, opt *gatewayOption) (*Gateway, error) {
 	if tcpipErr != nil {
 		return nil, fmt.Errorf(tcpipErr.Error())
 	}
+
 	ep, err := newGatewayEndpoint(gatewayEndpointOption{
 		MTU:     opt.MTU,
 		Address: tcpip.LinkAddress(hwAddr),
@@ -85,10 +88,11 @@ func newGateway(hwAddr net.HardwareAddr, opt *gatewayOption) (*Gateway, error) {
 		Pool:   opt.Pool,
 		Logger: opt.Logger,
 		DHCPv4Handler: &dhcpHandler{
-			gatewayIP:     gatewayIP,
-			subnetMask:    opt.Subnet.Mask,
-			leaseDB:       opt.Leases,
-			searchDomains: opt.DNSConfig.SearchDomains,
+			gatewayIP:        gatewayIP,
+			subnetMask:       opt.Subnet.Mask,
+			leaseDB:          opt.Leases,
+			searchDomains:    opt.DNSConfig.SearchDomains,
+			noDefaultGateway: opt.NoDefaultGateway,
 		},
 	})
 	if err != nil {

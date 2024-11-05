@@ -16,10 +16,11 @@ import (
 )
 
 type dhcpHandler struct {
-	gatewayIP     net.IP
-	subnetMask    net.IPMask
-	leaseDB       *leaseDB
-	searchDomains []string
+	gatewayIP        net.IP
+	subnetMask       net.IPMask
+	leaseDB          *leaseDB
+	searchDomains    []string
+	noDefaultGateway bool
 }
 
 type dhcpv4Packet struct {
@@ -37,14 +38,16 @@ func (h *dhcpHandler) handleDHCPv4(conn io.Writer, p dhcpv4Packet) error {
 
 	modifiers := []dhcpv4.Modifier{
 		dhcpv4.WithReply(p.msg),
-		dhcpv4.WithRouter(h.gatewayIP), // the default route
 		dhcpv4.WithServerIP(h.gatewayIP),
-		dhcpv4.WithDNS(h.gatewayIP),
 		dhcpv4.WithOption(dhcpv4.OptServerIdentifier(h.gatewayIP)),
 		dhcpv4.WithYourIP(yourIP),
 		dhcpv4.WithLeaseTime(3600), // hour works
 		dhcpv4.WithNetmask(h.subnetMask),
 		dhcpv4.WithDomainSearchList(h.searchDomains...),
+	}
+
+	if !h.noDefaultGateway {
+		modifiers = append(modifiers, dhcpv4.WithRouter(h.gatewayIP), dhcpv4.WithDNS(h.gatewayIP)) // the default route
 	}
 
 	switch p.msg.MessageType() {

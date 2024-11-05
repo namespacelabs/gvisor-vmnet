@@ -27,6 +27,7 @@ type networkOpts struct {
 	TCPReceiveBufferSize int
 	Logger               *slog.Logger
 	DialOut              func(ctx context.Context, network string, addr string) (net.Conn, error)
+	NoDefaultGateway     bool // Do not fill out Default Gateway field in DHCP responses.
 }
 
 // NetworkOpts is functional options.
@@ -108,6 +109,13 @@ func WithDialerOut(
 	}
 }
 
+// Disables returning DefaultGateway field in DHCP responses to the guest.
+func WithNoDefaultGateway(noDefaultGateway bool) NetworkOpts {
+	return func(n *networkOpts) {
+		n.NoDefaultGateway = noDefaultGateway
+	}
+}
+
 // Network is network for any virtual machines.
 type Network struct {
 	stack                *stack.Stack
@@ -161,13 +169,14 @@ func New(cidr string, opts ...NetworkOpts) (*Network, error) {
 	}
 
 	gw, err := newGateway(opt.MACAddress, &gatewayOption{
-		MTU:       opt.MTU,
-		PcapFile:  opt.PcapFile,
-		Pool:      pool,
-		Logger:    opt.Logger,
-		Leases:    db,
-		DNSConfig: opt.DNSConfig,
-		Subnet:    subnet,
+		MTU:              opt.MTU,
+		PcapFile:         opt.PcapFile,
+		Pool:             pool,
+		Logger:           opt.Logger,
+		Leases:           db,
+		DNSConfig:        opt.DNSConfig,
+		Subnet:           subnet,
+		NoDefaultGateway: opt.NoDefaultGateway,
 	})
 	if err != nil {
 		return nil, err
